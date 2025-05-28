@@ -109,6 +109,11 @@ class MCPClient:
         await self.client.__aexit__(exc_type, exc_val, exc_tb)
         await self.cleanup()
 
+    async def cleanup(self):
+        """Clean up resources"""
+        await self.client.close()
+        await self.exit_stack.aclose()
+
     @overload
     async def add_mcp_server(self, type: Literal["stdio"], **params: Unpack[StdioServerParameters_T]): ...
 
@@ -286,11 +291,13 @@ class MCPClient:
                 for tool_call in delta.tool_calls:
                     # Aggregate chunks into tool calls
                     if tool_call.index not in final_tool_calls:
-                        if tool_call.function.arguments is None:  # Corner case (depends on provider)
+                        if (
+                            tool_call.function.arguments is None or tool_call.function.arguments == "{}"
+                        ):  # Corner case (depends on provider)
                             tool_call.function.arguments = ""
                         final_tool_calls[tool_call.index] = tool_call
 
-                    if tool_call.function.arguments:
+                    elif tool_call.function.arguments:
                         final_tool_calls[tool_call.index].function.arguments += tool_call.function.arguments
 
             # Optionally exit early if no tools in first chunks
@@ -327,7 +334,3 @@ class MCPClient:
             tool_message_as_obj = ChatCompletionInputMessage.parse_obj_as_instance(tool_message)
             messages.append(tool_message_as_obj)
             yield tool_message_as_obj
-
-    async def cleanup(self):
-        """Clean up resources"""
-        await self.exit_stack.aclose()
