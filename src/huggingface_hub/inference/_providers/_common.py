@@ -1,13 +1,15 @@
 from functools import lru_cache
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union, overload
 
 from huggingface_hub import constants
 from huggingface_hub.hf_api import InferenceProviderMapping
 from huggingface_hub.inference._common import RequestParameters
+from huggingface_hub.inference._generated.types.chat_completion import ChatCompletionInputMessage
 from huggingface_hub.utils import build_hf_headers, get_token, logging
 
 
 logger = logging.get_logger(__name__)
+
 
 # Dev purposes only.
 # If you want to try to run inference for a new model locally before it's registered on huggingface.co
@@ -24,6 +26,7 @@ HARDCODED_MODEL_INFERENCE_MAPPING: Dict[str, Dict[str, InferenceProviderMapping]
     "cohere": {},
     "fal-ai": {},
     "fireworks-ai": {},
+    "groq": {},
     "hf-inference": {},
     "hyperbolic": {},
     "nebius": {},
@@ -34,8 +37,30 @@ HARDCODED_MODEL_INFERENCE_MAPPING: Dict[str, Dict[str, InferenceProviderMapping]
 }
 
 
-def filter_none(d: Dict[str, Any]) -> Dict[str, Any]:
-    return {k: v for k, v in d.items() if v is not None}
+@overload
+def filter_none(obj: Dict[str, Any]) -> Dict[str, Any]: ...
+@overload
+def filter_none(obj: List[Any]) -> List[Any]: ...
+
+
+def filter_none(obj: Union[Dict[str, Any], List[Any]]) -> Union[Dict[str, Any], List[Any]]:
+    if isinstance(obj, dict):
+        cleaned: Dict[str, Any] = {}
+        for k, v in obj.items():
+            if v is None:
+                continue
+            if isinstance(v, (dict, list)):
+                v = filter_none(v)
+                # remove empty nested dicts
+                if isinstance(v, dict) and not v:
+                    continue
+            cleaned[k] = v
+        return cleaned
+
+    if isinstance(obj, list):
+        return [filter_none(v) if isinstance(v, (dict, list)) else v for v in obj]
+
+    raise ValueError(f"Expected dict or list, got {type(obj)}")
 
 
 class TaskProviderHelper:
@@ -124,7 +149,12 @@ class TaskProviderHelper:
         if HARDCODED_MODEL_INFERENCE_MAPPING.get(self.provider, {}).get(model):
             return HARDCODED_MODEL_INFERENCE_MAPPING[self.provider][model]
 
-        provider_mapping = _fetch_inference_provider_mapping(model).get(self.provider)
+        provider_mapping = None
+        for mapping in _fetch_inference_provider_mapping(model):
+            if mapping.provider == self.provider:
+                provider_mapping = mapping
+                break
+
         if provider_mapping is None:
             raise ValueError(f"Model {model} is not supported by provider {self.provider}.")
 
@@ -137,6 +167,11 @@ class TaskProviderHelper:
         if provider_mapping.status == "staging":
             logger.warning(
                 f"Model {model} is in staging mode for provider {self.provider}. Meant for test purposes only."
+            )
+        if provider_mapping.status == "error":
+            logger.warning(
+                f"Our latest automated health check on model '{model}' for provider '{self.provider}' did not complete successfully.  "
+                "Inference call might fail."
             )
         return provider_mapping
 
@@ -212,9 +247,12 @@ class BaseConversationalTask(TaskProviderHelper):
         return "/v1/chat/completions"
 
     def _prepare_payload_as_dict(
-        self, inputs: Any, parameters: Dict, provider_mapping_info: InferenceProviderMapping
+        self,
+        inputs: List[Union[Dict, ChatCompletionInputMessage]],
+        parameters: Dict,
+        provider_mapping_info: InferenceProviderMapping,
     ) -> Optional[Dict]:
-        return {"messages": inputs, **filter_none(parameters), "model": provider_mapping_info.provider_id}
+        return filter_none({"messages": inputs, **parameters, "model": provider_mapping_info.provider_id})
 
 
 class BaseTextGenerationTask(TaskProviderHelper):
@@ -236,7 +274,7 @@ class BaseTextGenerationTask(TaskProviderHelper):
 
 
 @lru_cache(maxsize=None)
-def _fetch_inference_provider_mapping(model: str) -> Dict:
+def _fetch_inference_provider_mapping(model: str) -> List["InferenceProviderMapping"]:
     """
     Fetch provider mappings for a model from the Hub.
     """

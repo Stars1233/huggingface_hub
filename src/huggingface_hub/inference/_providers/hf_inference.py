@@ -26,7 +26,9 @@ class HFInferenceTask(TaskProviderHelper):
 
     def _prepare_mapping_info(self, model: Optional[str]) -> InferenceProviderMapping:
         if model is not None and model.startswith(("http://", "https://")):
-            return InferenceProviderMapping(providerId=model, hf_model_id=model, task=self.task, status="live")
+            return InferenceProviderMapping(
+                provider="hf-inference", providerId=model, hf_model_id=model, task=self.task, status="live"
+            )
         model_id = model if model is not None else _fetch_recommended_models().get(self.task)
         if model_id is None:
             raise ValueError(
@@ -34,7 +36,9 @@ class HFInferenceTask(TaskProviderHelper):
                 " explicitly. Visit https://huggingface.co/tasks for more info."
             )
         _check_supported_task(model_id, self.task)
-        return InferenceProviderMapping(providerId=model_id, hf_model_id=model_id, task=self.task, status="live")
+        return InferenceProviderMapping(
+            provider="hf-inference", providerId=model_id, hf_model_id=model_id, task=self.task, status="live"
+        )
 
     def _prepare_url(self, api_key: str, mapped_model: str) -> str:
         # hf-inference provider can handle URLs (e.g. Inference Endpoints or TGI deployment)
@@ -71,7 +75,7 @@ class HFInferenceBinaryInputTask(HFInferenceTask):
         provider_mapping_info: InferenceProviderMapping,
         extra_payload: Optional[Dict],
     ) -> Optional[bytes]:
-        parameters = filter_none({k: v for k, v in parameters.items() if v is not None})
+        parameters = filter_none(parameters)
         extra_payload = extra_payload or {}
         has_parameters = len(parameters) > 0 or len(extra_payload) > 0
 
@@ -189,6 +193,18 @@ def _check_supported_task(model: str, task: str) -> None:
 class HFInferenceFeatureExtractionTask(HFInferenceTask):
     def __init__(self):
         super().__init__("feature-extraction")
+
+    def _prepare_payload_as_dict(
+        self, inputs: Any, parameters: Dict, provider_mapping_info: InferenceProviderMapping
+    ) -> Optional[Dict]:
+        if isinstance(inputs, bytes):
+            raise ValueError(f"Unexpected binary input for task {self.task}.")
+        if isinstance(inputs, Path):
+            raise ValueError(f"Unexpected path input for task {self.task} (got {inputs})")
+
+        # Parameters are sent at root-level for feature-extraction task
+        # See specs: https://github.com/huggingface/huggingface.js/blob/main/packages/tasks/src/tasks/feature-extraction/spec/input.json
+        return {"inputs": inputs, **filter_none(parameters)}
 
     def get_response(self, response: Union[bytes, Dict], request_params: Optional[RequestParameters] = None) -> Any:
         if isinstance(response, bytes):
