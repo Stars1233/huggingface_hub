@@ -1,7 +1,7 @@
 import base64
 import logging
 from typing import Dict
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest import LogCaptureFixture
@@ -13,6 +13,7 @@ from huggingface_hub.inference._providers._common import (
     BaseConversationalTask,
     BaseTextGenerationTask,
     TaskProviderHelper,
+    filter_none,
     recursive_merge,
 )
 from huggingface_hub.inference._providers.black_forest_labs import BlackForestLabsTextToImageTask
@@ -20,6 +21,7 @@ from huggingface_hub.inference._providers.cohere import CohereConversationalTask
 from huggingface_hub.inference._providers.fal_ai import (
     _POLLING_INTERVAL,
     FalAIAutomaticSpeechRecognitionTask,
+    FalAIImageToImageTask,
     FalAITextToImageTask,
     FalAITextToSpeechTask,
     FalAITextToVideoTask,
@@ -29,9 +31,11 @@ from huggingface_hub.inference._providers.featherless_ai import (
     FeatherlessTextGenerationTask,
 )
 from huggingface_hub.inference._providers.fireworks_ai import FireworksAIConversationalTask
+from huggingface_hub.inference._providers.groq import GroqConversationalTask
 from huggingface_hub.inference._providers.hf_inference import (
     HFInferenceBinaryInputTask,
     HFInferenceConversational,
+    HFInferenceFeatureExtractionTask,
     HFInferenceTask,
 )
 from huggingface_hub.inference._providers.hyperbolic import HyperbolicTextGenerationTask, HyperbolicTextToImageTask
@@ -39,7 +43,11 @@ from huggingface_hub.inference._providers.nebius import NebiusFeatureExtractionT
 from huggingface_hub.inference._providers.novita import NovitaConversationalTask, NovitaTextGenerationTask
 from huggingface_hub.inference._providers.nscale import NscaleConversationalTask, NscaleTextToImageTask
 from huggingface_hub.inference._providers.openai import OpenAIConversationalTask
-from huggingface_hub.inference._providers.replicate import ReplicateTask, ReplicateTextToSpeechTask
+from huggingface_hub.inference._providers.replicate import (
+    ReplicateImageToImageTask,
+    ReplicateTask,
+    ReplicateTextToSpeechTask,
+)
 from huggingface_hub.inference._providers.sambanova import SambanovaConversationalTask, SambanovaFeatureExtractionTask
 from huggingface_hub.inference._providers.together import TogetherTextToImageTask
 
@@ -75,7 +83,9 @@ class TestBasicTaskProviderHelper:
         # Test unsupported model
         mocker.patch(
             "huggingface_hub.inference._providers._common._fetch_inference_provider_mapping",
-            return_value={"other-provider": "mapping"},
+            return_value=[
+                mocker.Mock(provider="other-provider", task="task-name", provider_id="mapped-id", status="active")
+            ],
         )
         with pytest.raises(ValueError, match="Model test-model is not supported.*"):
             helper._prepare_mapping_info("test-model")
@@ -83,14 +93,15 @@ class TestBasicTaskProviderHelper:
         # Test task mismatch
         mocker.patch(
             "huggingface_hub.inference._providers._common._fetch_inference_provider_mapping",
-            return_value={
-                "provider-name": mocker.Mock(
+            return_value=[
+                mocker.Mock(
                     task="other-task",
+                    provider="provider-name",
                     providerId="mapped-id",
                     hf_model_id="test-model",
                     status="live",
                 )
-            },
+            ],
         )
         with pytest.raises(ValueError, match="Model test-model is not supported for task.*"):
             helper._prepare_mapping_info("test-model")
@@ -98,11 +109,15 @@ class TestBasicTaskProviderHelper:
         # Test staging model
         mocker.patch(
             "huggingface_hub.inference._providers._common._fetch_inference_provider_mapping",
-            return_value={
-                "provider-name": mocker.Mock(
-                    task="task-name", hf_model_id="test-model", provider_id="mapped-id", status="staging"
+            return_value=[
+                mocker.Mock(
+                    provider="provider-name",
+                    task="task-name",
+                    hf_model_id="test-model",
+                    provider_id="mapped-id",
+                    status="staging",
                 )
-            },
+            ],
         )
         assert helper._prepare_mapping_info("test-model").provider_id == "mapped-id"
 
@@ -114,11 +129,15 @@ class TestBasicTaskProviderHelper:
         caplog.clear()
         mocker.patch(
             "huggingface_hub.inference._providers._common._fetch_inference_provider_mapping",
-            return_value={
-                "provider-name": mocker.Mock(
-                    task="task-name", hf_model_id="test-model", provider_id="mapped-id", status="live"
+            return_value=[
+                mocker.Mock(
+                    provider="provider-name",
+                    task="task-name",
+                    hf_model_id="test-model",
+                    provider_id="mapped-id",
+                    status="live",
                 )
-            },
+            ],
         )
         assert helper._prepare_mapping_info("test-model").provider_id == "mapped-id"
         assert helper._prepare_mapping_info("test-model").hf_model_id == "test-model"
@@ -129,8 +148,9 @@ class TestBasicTaskProviderHelper:
         # Test with loras
         mocker.patch(
             "huggingface_hub.inference._providers._common._fetch_inference_provider_mapping",
-            return_value={
-                "provider-name": mocker.Mock(
+            return_value=[
+                mocker.Mock(
+                    provider="provider-name",
                     task="task-name",
                     hf_model_id="test-model",
                     provider_id="mapped-id",
@@ -138,7 +158,7 @@ class TestBasicTaskProviderHelper:
                     adapter_weights_path="lora-weights-path",
                     adapter="lora",
                 )
-            },
+            ],
         )
 
         assert helper._prepare_mapping_info("test-model").adapter_weights_path == "lora-weights-path"
@@ -256,6 +276,7 @@ class TestCohereConversationalTask:
             [{"role": "user", "content": "Hello!"}],
             {},
             InferenceProviderMapping(
+                provider="cohere",
                 hf_model_id="CohereForAI/command-r7b-12-2024",
                 providerId="CohereForAI/command-r7b-12-2024",
                 task="conversational",
@@ -305,6 +326,7 @@ class TestFalAIProvider:
             "a beautiful cat",
             {"width": 512, "height": 512},
             InferenceProviderMapping(
+                provider="fal-ai",
                 hf_model_id="username/repo_name",
                 providerId="username/repo_name",
                 task="text-to-image",
@@ -387,6 +409,73 @@ class TestFalAIProvider:
         mock_sleep.assert_called_once_with(_POLLING_INTERVAL)
         assert response == b"video_content"
 
+    def test_image_to_image_payload(self):
+        helper = FalAIImageToImageTask()
+        mapping_info = InferenceProviderMapping(
+            provider="fal-ai",
+            hf_model_id="stabilityai/sdxl-refiner-1.0",
+            providerId="fal-ai/sdxl-refiner",
+            task="image-to-image",
+            status="live",
+        )
+        payload = helper._prepare_payload_as_dict("https://example.com/image.png", {"prompt": "a cat"}, mapping_info)
+        assert payload == {"image_url": "https://example.com/image.png", "prompt": "a cat"}
+
+        payload = helper._prepare_payload_as_dict(
+            b"dummy_image_data", {"prompt": "replace the cat with a dog"}, mapping_info
+        )
+        assert payload == {
+            "image_url": f"data:image/jpeg;base64,{base64.b64encode(b'dummy_image_data').decode()}",
+            "prompt": "replace the cat with a dog",
+        }
+
+    def test_image_to_image_response(self, mocker):
+        helper = FalAIImageToImageTask()
+        mock_session = mocker.patch("huggingface_hub.inference._providers.fal_ai.get_session")
+        mock_sleep = mocker.patch("huggingface_hub.inference._providers.fal_ai.time.sleep")
+        mock_session.return_value.get.side_effect = [
+            # First call: status
+            mocker.Mock(json=lambda: {"status": "COMPLETED"}, headers={"Content-Type": "application/json"}),
+            # Second call: get result
+            mocker.Mock(json=lambda: {"images": [{"url": "image_url"}]}, headers={"Content-Type": "application/json"}),
+            # Third call: get image content
+            mocker.Mock(content=b"image_content"),
+        ]
+        api_key = helper._prepare_api_key("hf_token")
+        headers = helper._prepare_headers({}, api_key)
+        url = helper._prepare_url(api_key, "username/repo_name")
+
+        request_params = RequestParameters(
+            url=url,
+            headers=headers,
+            task="image-to-image",
+            model="username/repo_name",
+            data=None,
+            json=None,
+        )
+        response = helper.get_response(
+            b'{"request_id": "test_request_id", "status": "PROCESSING", "response_url": "https://queue.fal.run/username_provider/repo_name_provider/requests/test_request_id", "status_url": "https://queue.fal.run/username_provider/repo_name_provider/requests/test_request_id/status"}',
+            request_params,
+        )
+
+        # Verify the correct URLs were called
+        assert mock_session.return_value.get.call_count == 3
+        mock_session.return_value.get.assert_has_calls(
+            [
+                mocker.call(
+                    "https://router.huggingface.co/fal-ai/username_provider/repo_name_provider/requests/test_request_id/status?_subdomain=queue",
+                    headers=request_params.headers,
+                ),
+                mocker.call(
+                    "https://router.huggingface.co/fal-ai/username_provider/repo_name_provider/requests/test_request_id?_subdomain=queue",
+                    headers=request_params.headers,
+                ),
+                mocker.call("image_url"),
+            ]
+        )
+        mock_sleep.assert_called_once_with(_POLLING_INTERVAL)
+        assert response == b"image_content"
+
 
 class TestFeatherlessAIProvider:
     def test_prepare_route_chat_completionurl(self):
@@ -409,6 +498,7 @@ class TestFireworksAIConversationalTask:
             [{"role": "user", "content": "Hello!"}],
             {},
             InferenceProviderMapping(
+                provider="fireworks-ai",
                 hf_model_id="meta-llama/Llama-3.1-8B-Instruct",
                 providerId="meta-llama/Llama-3.1-8B-Instruct",
                 task="conversational",
@@ -419,6 +509,13 @@ class TestFireworksAIConversationalTask:
             "messages": [{"role": "user", "content": "Hello!"}],
             "model": "meta-llama/Llama-3.1-8B-Instruct",
         }
+
+
+class TestGroqProvider:
+    def test_prepare_route(self):
+        """Test route preparation for Groq conversational task."""
+        helper = GroqConversationalTask()
+        assert helper._prepare_route("username/repo_name", "hf_token") == "/openai/v1/chat/completions"
 
 
 class TestHFInferenceProvider:
@@ -466,6 +563,7 @@ class TestHFInferenceProvider:
     def test_prepare_payload_as_dict(self):
         helper = HFInferenceTask("text-classification")
         mapping_info = InferenceProviderMapping(
+            provider="hf-inference",
             hf_model_id="username/repo_name",
             providerId="username/repo_name",
             task="text-classification",
@@ -490,6 +588,7 @@ class TestHFInferenceProvider:
     def test_prepare_payload_as_bytes(self):
         helper = HFInferenceBinaryInputTask("image-classification")
         mapping_info = InferenceProviderMapping(
+            provider="hf-inference",
             hf_model_id="username/repo_name",
             providerId="username/repo_name",
             task="image-classification",
@@ -546,7 +645,7 @@ class TestHFInferenceProvider:
         assert request.task == "text-classification"
         assert request.model == "username/repo_name"
         assert request.headers["authorization"] == "Bearer hf_test_token"
-        assert request.json == {"inputs": "this is a dummy input", "parameters": {}}
+        assert request.json == {"inputs": "this is a dummy input"}
 
     def test_prepare_request_conversational(self, mocker):
         mocker.patch(
@@ -614,6 +713,7 @@ class TestHFInferenceProvider:
         helper = HFInferenceConversational()
         messages = [{"role": "user", "content": "Hello!"}]
         provider_mapping_info = InferenceProviderMapping(
+            provider="hf-inference",
             hf_model_id=mapped_model,
             providerId=mapped_model,
             task="conversational",
@@ -627,6 +727,15 @@ class TestHFInferenceProvider:
 
         assert payload["model"] == expected_model
         assert payload["messages"] == messages
+
+    def test_prepare_payload_feature_extraction(self):
+        helper = HFInferenceFeatureExtractionTask()
+        payload = helper._prepare_payload_as_dict(
+            inputs="This is a test sentence.",
+            parameters={"truncate": True},
+            provider_mapping_info=MagicMock(),
+        )
+        assert payload == {"inputs": "This is a test sentence.", "truncate": True}  # not under "parameters"
 
     @pytest.mark.parametrize(
         "pipeline_tag,tags,task,should_raise",
@@ -751,6 +860,7 @@ class TestHyperbolicProvider:
             [{"role": "user", "content": "Hello!"}],
             {"temperature": 0.7},
             InferenceProviderMapping(
+                provider="hyperbolic",
                 hf_model_id="meta-llama/Llama-3.2-3B-Instruct",
                 providerId="meta-llama/Llama-3.2-3B-Instruct",
                 task="conversational",
@@ -776,6 +886,7 @@ class TestHyperbolicProvider:
                 "seed": 42,
             },
             InferenceProviderMapping(
+                provider="hyperbolic",
                 hf_model_id="stabilityai/sdxl-turbo",
                 providerId="stabilityai/sdxl",
                 task="text-to-image",
@@ -811,6 +922,7 @@ class TestNebiusProvider:
             "a beautiful cat",
             {"num_inference_steps": 10, "width": 512, "height": 512, "guidance_scale": 7.5},
             InferenceProviderMapping(
+                provider="black-forest-labs/flux-schnell",
                 hf_model_id="black-forest-labs/flux-schnell",
                 providerId="black-forest-labs/flux-schnell",
                 task="text-to-image",
@@ -837,6 +949,7 @@ class TestNebiusProvider:
             "Hello world",
             {"param-that-will-be-ignored": True},
             InferenceProviderMapping(
+                provider="nebius",
                 hf_model_id="username/repo_name",
                 providerId="provider-id",
                 task="feature-extraction",
@@ -883,6 +996,7 @@ class TestNscaleProvider:
                 "height": 512,
             },
             InferenceProviderMapping(
+                provider="nscale",
                 hf_model_id="stabilityai/stable-diffusion-xl-base-1.0",
                 providerId="stabilityai/stable-diffusion-xl-base-1.0",
                 task="text-to-image",
@@ -907,6 +1021,7 @@ class TestNscaleProvider:
                 "num_inference_steps": 50,
             },
             InferenceProviderMapping(
+                provider="nscale",
                 hf_model_id="stabilityai/stable-diffusion-xl-base-1.0",
                 providerId="stabilityai/stable-diffusion-xl-base-1.0",
                 task="text-to-image",
@@ -958,6 +1073,7 @@ class TestReplicateProvider:
             "a beautiful cat",
             {"num_inference_steps": 20},
             InferenceProviderMapping(
+                provider="replicate",
                 hf_model_id="black-forest-labs/FLUX.1-schnell",
                 providerId="black-forest-labs/FLUX.1-schnell",
                 task="text-to-image",
@@ -971,6 +1087,7 @@ class TestReplicateProvider:
             "a beautiful cat",
             {"num_inference_steps": 20},
             InferenceProviderMapping(
+                provider="replicate",
                 hf_model_id="black-forest-labs/FLUX.1-schnell",
                 providerId="black-forest-labs/FLUX.1-schnell:1944af04d098ef",
                 task="text-to-image",
@@ -988,6 +1105,7 @@ class TestReplicateProvider:
             "Hello world",
             {},
             InferenceProviderMapping(
+                provider="replicate",
                 hf_model_id="hexgrad/Kokoro-82M",
                 providerId="hexgrad/Kokoro-82M:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
                 task="text-to-speech",
@@ -1011,6 +1129,44 @@ class TestReplicateProvider:
         mock.return_value.get.assert_called_once_with("https://example.com/image.jpg")
         assert response == mock.return_value.get.return_value.content
 
+    def test_image_to_image_payload(self):
+        helper = ReplicateImageToImageTask()
+        dummy_image = b"dummy image data"
+        encoded_image = base64.b64encode(dummy_image).decode("utf-8")
+        image_uri = f"data:image/jpeg;base64,{encoded_image}"
+
+        # No model version
+        payload = helper._prepare_payload_as_dict(
+            dummy_image,
+            {"num_inference_steps": 20},
+            InferenceProviderMapping(
+                provider="replicate",
+                hf_model_id="google/gemini-pro-vision",
+                providerId="google/gemini-pro-vision",
+                task="image-to-image",
+                status="live",
+            ),
+        )
+        assert payload == {
+            "input": {"input_image": image_uri, "num_inference_steps": 20},
+        }
+
+        payload = helper._prepare_payload_as_dict(
+            dummy_image,
+            {"num_inference_steps": 20},
+            InferenceProviderMapping(
+                provider="replicate",
+                hf_model_id="google/gemini-pro-vision",
+                providerId="google/gemini-pro-vision:123456",
+                task="image-to-image",
+                status="live",
+            ),
+        )
+        assert payload == {
+            "input": {"input_image": image_uri, "num_inference_steps": 20},
+            "version": "123456",
+        }
+
 
 class TestSambanovaProvider:
     def test_prepare_url_conversational(self):
@@ -1026,6 +1182,7 @@ class TestSambanovaProvider:
             "Hello world",
             {"truncate": True},
             InferenceProviderMapping(
+                provider="sambanova",
                 hf_model_id="username/repo_name",
                 providerId="provider-id",
                 task="feature-extraction",
@@ -1053,6 +1210,7 @@ class TestTogetherProvider:
             "a beautiful cat",
             {"num_inference_steps": 10, "guidance_scale": 1, "width": 512, "height": 512},
             InferenceProviderMapping(
+                provider="together",
                 hf_model_id="black-forest-labs/FLUX.1-schnell",
                 providerId="black-forest-labs/FLUX.1-schnell",
                 task="text-to-image",
@@ -1090,6 +1248,7 @@ class TestBaseConversationalTask:
             inputs=messages,
             parameters=parameters,
             provider_mapping_info=InferenceProviderMapping(
+                provider="test-provider",
                 hf_model_id="test-model",
                 providerId="test-provider-id",
                 task="conversational",
@@ -1103,6 +1262,98 @@ class TestBaseConversationalTask:
             "max_tokens": 100,
             "model": "test-provider-id",
         }
+
+    @pytest.mark.parametrize(
+        "raw_messages, expected_messages",
+        [
+            (
+                [
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": None,
+                    }
+                ],
+                [
+                    {
+                        "role": "assistant",
+                        "content": "",
+                    }
+                ],
+            ),
+            (
+                [
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_current_weather",
+                                    "arguments": '{"location": "San Francisco, CA", "unit": "celsius"}',
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        "role": "tool",
+                        "content": "pong",
+                        "tool_call_id": "abc123",
+                        "name": "dummy_tool",
+                        "tool_calls": None,
+                    },
+                ],
+                [
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_current_weather",
+                                    "arguments": '{"location": "San Francisco, CA", "unit": "celsius"}',
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "role": "tool",
+                        "content": "pong",
+                        "tool_call_id": "abc123",
+                        "name": "dummy_tool",
+                    },
+                ],
+            ),
+        ],
+    )
+    def test_prepare_payload_filters_messages(self, raw_messages, expected_messages):
+        helper = BaseConversationalTask(provider="test-provider", base_url="https://api.test.com")
+
+        parameters = {
+            "temperature": 0.2,
+            "max_tokens": None,
+            "top_p": None,
+        }
+
+        payload = helper._prepare_payload_as_dict(
+            inputs=raw_messages,
+            parameters=parameters,
+            provider_mapping_info=InferenceProviderMapping(
+                provider="test-provider",
+                hf_model_id="test-model",
+                providerId="test-provider-id",
+                task="conversational",
+                status="live",
+            ),
+        )
+
+        assert payload["messages"] == expected_messages
+        assert payload["temperature"] == 0.2
+        assert "max_tokens" not in payload
+        assert "top_p" not in payload
 
 
 class TestBaseTextGenerationTask:
@@ -1120,6 +1371,7 @@ class TestBaseTextGenerationTask:
             inputs=prompt,
             parameters=parameters,
             provider_mapping_info=InferenceProviderMapping(
+                provider="test-provider",
                 hf_model_id="test-model",
                 providerId="test-provider-id",
                 task="text-generation",
@@ -1187,6 +1439,36 @@ def test_recursive_merge(dict1: Dict, dict2: Dict, expected: Dict):
     assert dict2 == initial_dict2
 
 
+@pytest.mark.parametrize(
+    "data, expected",
+    [
+        ({}, {}),  # empty dictionary remains empty
+        ({"a": 1, "b": None, "c": 3}, {"a": 1, "c": 3}),  # remove None at root level
+        ({"a": None, "b": {"x": None, "y": 2}}, {"b": {"y": 2}}),  # remove nested None
+        ({"a": {"b": {"c": None}}}, {}),  # remove empty nested dict
+        (
+            {"a": "", "b": {"x": {"y": None}, "z": 0}, "c": []},  # do not remove 0, [] and "" values
+            {"a": "", "b": {"z": 0}, "c": []},
+        ),
+        (
+            {"a": [0, 1, None]},  # do not remove None in lists
+            {"a": [0, 1, None]},
+        ),
+        # dicts inside list are cleaned, list level None kept
+        ({"a": [{"x": None, "y": 1}, None]}, {"a": [{"y": 1}, None]}),
+        # remove every None that is the value of a dict key
+        (
+            [None, {"x": None, "y": 5}, [None, 6]],
+            [None, {"y": 5}, [None, 6]],
+        ),
+        ({"a": [None, {"x": None}]}, {"a": [None, {}]}),
+    ],
+)
+def test_filter_none(data: Dict, expected: Dict):
+    """Test that filter_none removes None values from nested dictionaries."""
+    assert filter_none(data) == expected
+
+
 def test_get_provider_helper_auto(mocker):
     """Test the 'auto' provider selection logic."""
 
@@ -1197,10 +1479,10 @@ def test_get_provider_helper_auto(mocker):
 
     mocker.patch(
         "huggingface_hub.inference._providers._fetch_inference_provider_mapping",
-        return_value={
-            "provider-a": mocker.Mock(),
-            "provider-b": mocker.Mock(),
-        },
+        return_value=[
+            mocker.Mock(provider="provider-a"),
+            mocker.Mock(provider="provider-b"),
+        ],
     )
     helper = get_provider_helper(provider="auto", task="test-task", model="test-model")
 

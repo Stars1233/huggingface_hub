@@ -12,11 +12,13 @@ from .cerebras import CerebrasConversationalTask
 from .cohere import CohereConversationalTask
 from .fal_ai import (
     FalAIAutomaticSpeechRecognitionTask,
+    FalAIImageToImageTask,
     FalAITextToImageTask,
     FalAITextToSpeechTask,
     FalAITextToVideoTask,
 )
 from .fireworks_ai import FireworksAIConversationalTask
+from .groq import GroqConversationalTask
 from .hf_inference import (
     HFInferenceBinaryInputTask,
     HFInferenceConversational,
@@ -33,7 +35,7 @@ from .nebius import (
 from .novita import NovitaConversationalTask, NovitaTextGenerationTask, NovitaTextToVideoTask
 from .nscale import NscaleConversationalTask, NscaleTextToImageTask
 from .openai import OpenAIConversationalTask
-from .replicate import ReplicateTask, ReplicateTextToImageTask, ReplicateTextToSpeechTask
+from .replicate import ReplicateImageToImageTask, ReplicateTask, ReplicateTextToImageTask, ReplicateTextToSpeechTask
 from .sambanova import SambanovaConversationalTask, SambanovaFeatureExtractionTask
 from .together import TogetherConversationalTask, TogetherTextGenerationTask, TogetherTextToImageTask
 
@@ -48,6 +50,7 @@ PROVIDER_T = Literal[
     "fal-ai",
     "featherless-ai",
     "fireworks-ai",
+    "groq",
     "hf-inference",
     "hyperbolic",
     "nebius",
@@ -76,6 +79,7 @@ PROVIDERS: Dict[PROVIDER_T, Dict[str, TaskProviderHelper]] = {
         "text-to-image": FalAITextToImageTask(),
         "text-to-speech": FalAITextToSpeechTask(),
         "text-to-video": FalAITextToVideoTask(),
+        "image-to-image": FalAIImageToImageTask(),
     },
     "featherless-ai": {
         "conversational": FeatherlessConversationalTask(),
@@ -83,6 +87,9 @@ PROVIDERS: Dict[PROVIDER_T, Dict[str, TaskProviderHelper]] = {
     },
     "fireworks-ai": {
         "conversational": FireworksAIConversationalTask(),
+    },
+    "groq": {
+        "conversational": GroqConversationalTask(),
     },
     "hf-inference": {
         "text-to-image": HFInferenceTask("text-to-image"),
@@ -136,6 +143,7 @@ PROVIDERS: Dict[PROVIDER_T, Dict[str, TaskProviderHelper]] = {
         "conversational": OpenAIConversationalTask(),
     },
     "replicate": {
+        "image-to-image": ReplicateImageToImageTask(),
         "text-to-image": ReplicateTextToImageTask(),
         "text-to-speech": ReplicateTextToSpeechTask(),
         "text-to-video": ReplicateTask("text-to-video"),
@@ -183,7 +191,7 @@ def get_provider_helper(
         if model is None:
             raise ValueError("Specifying a model is required when provider is 'auto'")
         provider_mapping = _fetch_inference_provider_mapping(model)
-        provider = next(iter(provider_mapping))
+        provider = next(iter(provider_mapping)).provider
 
     provider_tasks = PROVIDERS.get(provider)  # type: ignore
     if provider_tasks is None:
