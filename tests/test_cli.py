@@ -1785,6 +1785,43 @@ class TestModelsLsCommand:
         assert result.exit_code == 2
         assert "Invalid value" in result.output
 
+    @with_production_testing
+    def test_models_ls_files_json(self, runner: CliRunner) -> None:
+        """List files from a real model repo on the Hub (JSON output)."""
+        result = runner.invoke(app, ["models", "ls", "t5-small", "--format", "json"])
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        paths = {item["path"] for item in output}
+        assert "config.json" in paths
+        assert "tokenizer.json" in paths
+
+    @with_production_testing
+    def test_models_ls_files_quiet(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["models", "ls", "t5-small", "--format", "quiet"])
+        assert result.exit_code == 0
+        lines = result.stdout.strip().splitlines()
+        assert "config.json" in lines
+        assert "onnx/" in lines
+
+    @with_production_testing
+    def test_models_ls_files_tree(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["models", "ls", "t5-small", "--tree"])
+        assert result.exit_code == 0
+        assert "├──" in result.stdout or "└──" in result.stdout
+        assert "config.json" in result.stdout
+
+    @with_production_testing
+    def test_models_ls_files_recursive(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["models", "ls", "t5-small", "-R", "--format", "quiet"])
+        assert result.exit_code == 0
+        lines = result.stdout.strip().splitlines()
+        assert "config.json" in lines
+        assert any(line.startswith("onnx/") for line in lines)
+
+    def test_models_ls_tree_without_repo_id_fails(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["models", "ls", "--tree"])
+        assert result.exit_code != 0
+
 
 class TestDatasetsLsCommand:
     def test_datasets_ls_with_sort(self, runner: CliRunner) -> None:
@@ -1796,6 +1833,15 @@ class TestDatasetsLsCommand:
         assert result.exit_code == 0
         _, kwargs = api.list_datasets.call_args
         assert kwargs["sort"] == "downloads"
+
+    @with_production_testing
+    def test_datasets_ls_files(self, runner: CliRunner) -> None:
+        """List files from a real dataset repo on the Hub."""
+        result = runner.invoke(app, ["datasets", "ls", "rajpurkar/squad", "--format", "json"])
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        paths = {item["path"] for item in output}
+        assert "README.md" in paths
 
 
 class TestModelsCardCommand:
@@ -2080,6 +2126,16 @@ class TestSpacesLsCommand:
         result = runner.invoke(app, ["spaces", "ls", "--sort", "downloads"])
         assert result.exit_code == 2
         assert "Invalid value" in result.output
+
+    @with_production_testing
+    def test_spaces_ls_files(self, runner: CliRunner) -> None:
+        """List files from a real space repo on the Hub."""
+        result = runner.invoke(app, ["spaces", "ls", "gradio/theme_builder", "--format", "json"])
+        assert result.exit_code == 0
+        output = json.loads(result.stdout)
+        paths = {item["path"] for item in output}
+        assert "README.md" in paths
+        assert "run.py" in paths
 
 
 class TestSpacesLogsCommand:

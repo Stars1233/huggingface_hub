@@ -66,6 +66,7 @@ from ._cli_utils import (
     parse_volumes,
     typer_factory,
 )
+from ._file_listing import list_repo_files_cmd
 from ._output import OutputFormatWithAuto, out
 
 
@@ -95,9 +96,16 @@ spaces_cli.add_typer(volumes_cli, name="volumes")
     examples=[
         "hf spaces ls --limit 10",
         'hf spaces ls --search "chatbot" --author huggingface',
+        "hf spaces ls victor/deepsite",
+        "hf spaces ls victor/deepsite -R",
+        "hf spaces ls victor/deepsite --tree -h",
     ],
 )
 def spaces_ls(
+    repo_id: Annotated[
+        str | None,
+        typer.Argument(help="Space ID (e.g. `username/repo-name`) to list files from. If omitted, lists spaces."),
+    ] = None,
     search: SearchOpt = None,
     author: AuthorOpt = None,
     filter: FilterOpt = None,
@@ -107,10 +115,58 @@ def spaces_ls(
     ] = None,
     limit: LimitOpt = 10,
     expand: ExpandOpt = None,
+    human_readable: Annotated[
+        bool,
+        typer.Option("--human-readable", "-h", help="Show sizes in human readable format (only for listing files)."),
+    ] = False,
+    as_tree: Annotated[
+        bool,
+        typer.Option("--tree", help="List files in tree format (only for listing files)."),
+    ] = False,
+    recursive: Annotated[
+        bool,
+        typer.Option("--recursive", "-R", help="List files recursively (only for listing files)."),
+    ] = False,
+    revision: RevisionOpt = None,
     format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
-    """List spaces on the Hub."""
+    """List spaces on the Hub, or files in a space repo.
+
+    When called with no argument, lists spaces on the Hub.
+    When called with a space ID, lists files in that space repo.
+    """
+    if repo_id is not None:
+        if search is not None:
+            raise typer.BadParameter("Cannot use --search when listing files.")
+        if author is not None:
+            raise typer.BadParameter("Cannot use --author when listing files.")
+        if filter is not None:
+            raise typer.BadParameter("Cannot use --filter when listing files.")
+        if sort is not None:
+            raise typer.BadParameter("Cannot use --sort when listing files.")
+        if limit != 10:
+            raise typer.BadParameter("Cannot use --limit when listing files.")
+        if expand is not None:
+            raise typer.BadParameter("Cannot use --expand when listing files.")
+        return list_repo_files_cmd(
+            repo_id=repo_id,
+            repo_type="space",
+            human_readable=human_readable,
+            as_tree=as_tree,
+            recursive=recursive,
+            revision=revision,
+            token=token,
+        )
+
+    if as_tree:
+        raise typer.BadParameter("Cannot use --tree when listing spaces.")
+    if recursive:
+        raise typer.BadParameter("Cannot use --recursive when listing spaces.")
+    if human_readable:
+        raise typer.BadParameter("Cannot use --human-readable when listing spaces.")
+    if revision is not None:
+        raise typer.BadParameter("Cannot use --revision when listing spaces.")
     api = get_hf_api(token=token)
     sort_key = sort.value if sort else None
     results = [
