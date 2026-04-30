@@ -54,7 +54,6 @@ from huggingface_hub.utils import StatusLine, are_progress_bars_disabled, disabl
 from ._cli_utils import (
     AuthorOpt,
     FilterOpt,
-    FormatWithAutoOpt,
     LimitOpt,
     RevisionOpt,
     SearchOpt,
@@ -67,7 +66,7 @@ from ._cli_utils import (
     typer_factory,
 )
 from ._file_listing import list_repo_files_cmd
-from ._output import OutputFormatWithAuto, out
+from ._output import out
 
 
 HOT_RELOADING_MIN_GRADIO = "6.1.0"
@@ -128,7 +127,6 @@ def spaces_ls(
         typer.Option("--recursive", "-R", help="List files recursively (only for listing files)."),
     ] = False,
     revision: RevisionOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """List spaces on the Hub, or files in a space repo.
@@ -194,7 +192,6 @@ def spaces_info(
     space_id: Annotated[str, typer.Argument(help="The space ID (e.g. `username/repo-name`).")],
     revision: RevisionOpt = None,
     expand: ExpandOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Get info about a space on the Hub."""
@@ -221,7 +218,6 @@ def spaces_card(
     space_id: Annotated[str, typer.Argument(help="The space ID (e.g. `username/repo-name`).")],
     metadata: Annotated[bool, typer.Option("--metadata", help="Output only the metadata from the card.")] = False,
     text: Annotated[bool, typer.Option("--text", help="Output only the text body (no metadata).")] = False,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Get the Space card (README) for a Space on the Hub."""
@@ -252,7 +248,6 @@ def spaces_search(
     include_non_running: Annotated[bool, typer.Option(help="Include non-running spaces in results.")] = False,
     description: Annotated[bool, typer.Option(help="Show AI-generated descriptions.")] = False,
     limit: LimitOpt = 10,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Search spaces on the Hub using semantic search."""
@@ -360,7 +355,6 @@ def dev_mode(
 )
 def spaces_pause(
     space_id: Annotated[str, typer.Argument(help="The space ID (e.g. `username/repo-name`).")],
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Pause a Space."""
@@ -389,7 +383,6 @@ def spaces_restart(
             help="Rebuild the Space from scratch without using the build cache.",
         ),
     ] = False,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Restart a Space."""
@@ -413,10 +406,7 @@ def spaces_restart(
         "hf spaces hardware",
     ],
 )
-def spaces_hardware(
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
-    token: TokenOpt = None,
-) -> None:
+def spaces_hardware(token: TokenOpt = None) -> None:
     """List available hardware options for Spaces."""
     api = get_hf_api(token=token)
     hardware_list = api.list_spaces_hardware()
@@ -465,7 +455,6 @@ def spaces_settings(
             help="Space hardware flavor (e.g. 'cpu-basic', 't4-medium', 'l4x4'). Run 'hf spaces hardware' to list available options.",
         ),
     ] = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Update the settings of a Space."""
@@ -814,7 +803,6 @@ def _editor_open(local_path: str) -> int | Literal["no-tty", "no-editor"]:
 )
 def volumes_ls(
     space_id: Annotated[str, typer.Argument(help="The space ID (e.g. `username/repo-name`).")],
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """List volumes mounted in a Space."""
@@ -840,7 +828,6 @@ def volumes_ls(
 def volumes_set(
     space_id: Annotated[str, typer.Argument(help="The space ID (e.g. `username/repo-name`).")],
     volume: VolumesOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Set (replace) volumes for a Space."""
@@ -870,7 +857,6 @@ def volumes_delete(
             help="Answer Yes to prompt automatically.",
         ),
     ] = False,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Remove all volumes from a Space."""

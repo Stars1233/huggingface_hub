@@ -37,7 +37,6 @@ from huggingface_hub.utils import (
 )
 
 from ._cli_utils import (
-    FormatWithAutoOpt,
     SearchOpt,
     TokenOpt,
     get_hf_api,
@@ -106,7 +105,6 @@ def create(
         ),
     ] = False,
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """Create a new bucket."""
     api = get_hf_api(token=token)
@@ -190,7 +188,6 @@ def list_cmd(
     ] = False,
     search: SearchOpt = None,
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """List buckets or files in a bucket.
 
@@ -300,7 +297,6 @@ def info(
         ),
     ],
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """Get info about a bucket."""
     api = get_hf_api(token=token)
@@ -346,7 +342,6 @@ def delete(
         ),
     ] = False,
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """Delete a bucket.
 
@@ -432,7 +427,6 @@ def remove(
         ),
     ] = None,
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """Remove files from a bucket.
 
@@ -541,7 +535,6 @@ def move(
         ),
     ],
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """Move (rename) a bucket to a new name or namespace."""
     # Parse from_id
@@ -675,14 +668,6 @@ def sync(
             help="Show detailed logging with reasoning.",
         ),
     ] = False,
-    quiet: Annotated[
-        bool,
-        typer.Option(
-            "--quiet",
-            "-q",
-            help="Minimal output.",
-        ),
-    ] = False,
     token: TokenOpt = None,
 ) -> None:
     """Sync files between local directory and a bucket."""
@@ -702,9 +687,9 @@ def sync(
         apply=apply,
         dry_run=dry_run,
         verbose=verbose,
-        quiet=quiet,
+        quiet=out.is_quiet(),
     )
-    if plan and not quiet:
+    if plan and not out.is_quiet():
         out.hint(f"Run `hf buckets sync --apply {plan}` to execute this plan.")
 
 
@@ -736,7 +721,6 @@ def cp(
         str | None, typer.Argument(help="Destination: local path, bucket hf://... handle, or - for stdout")
     ] = None,
     token: TokenOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
 ) -> None:
     """Copy files to or from buckets."""
     api = get_hf_api(token=token)

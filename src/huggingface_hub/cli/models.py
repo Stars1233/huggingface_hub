@@ -36,7 +36,6 @@ from huggingface_hub.repocard import ModelCard
 from ._cli_utils import (
     AuthorOpt,
     FilterOpt,
-    FormatWithAutoOpt,
     LimitOpt,
     RevisionOpt,
     SearchOpt,
@@ -47,7 +46,7 @@ from ._cli_utils import (
     typer_factory,
 )
 from ._file_listing import list_repo_files_cmd
-from ._output import OutputFormatWithAuto, out
+from ._output import out
 
 
 _EXPAND_PROPERTIES = sorted(get_args(ExpandModelProperty_T))
@@ -109,7 +108,6 @@ def models_ls(
         typer.Option("--recursive", "-R", help="List files recursively (only for listing files)."),
     ] = False,
     revision: RevisionOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """List models on the Hub, or files in a model repo.
@@ -178,7 +176,6 @@ def models_info(
     model_id: Annotated[str, typer.Argument(help="The model ID (e.g. `username/repo-name`).")],
     revision: RevisionOpt = None,
     expand: ExpandOpt = None,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Get info about a model on the Hub."""
@@ -205,7 +202,6 @@ def models_card(
     model_id: Annotated[str, typer.Argument(help="The model ID (e.g. `username/repo-name`).")],
     metadata: Annotated[bool, typer.Option("--metadata", help="Output only the metadata from the card.")] = False,
     text: Annotated[bool, typer.Option("--text", help="Output only the text body (no metadata).")] = False,
-    format: FormatWithAutoOpt = OutputFormatWithAuto.auto,
     token: TokenOpt = None,
 ) -> None:
     """Get the model card (README) for a model on the Hub."""
