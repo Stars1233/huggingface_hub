@@ -3392,7 +3392,7 @@ $ hf repos create [OPTIONS] REPO_ID
 **Options**:
 
 * `--type, --repo-type [model|dataset|space]`: The type of repository (model, dataset, or space).  [default: model]
-* `--space-sdk TEXT`: Hugging Face Spaces SDK type. Required when --type is set to 'space'.
+* `--sdk, --space-sdk TEXT`: Hugging Face Spaces SDK type. Required when --type is set to 'space'.
 * `--private / --no-private`: Whether to create a private repo if repo doesn't exist on the Hub. Ignored if the repo already exists.
 * `--public`: Whether to make the repo public. Ignored if the repo already exists.
 * `--protected`: Whether to make the Space protected (Spaces only). Ignored if the repo already exists.
@@ -3413,8 +3413,8 @@ $ hf repos create [OPTIONS] REPO_ID
 Examples
   $ hf repos create my-model
   $ hf repos create my-dataset --repo-type dataset --private
-  $ hf repos create my-space --type space --space-sdk gradio --flavor t4-medium --secrets HF_TOKEN -e THEME=dark --protected
-  $ hf repos create my-space --type space --space-sdk gradio -v hf://org/my-model:/models -v hf://buckets/org/b:/data
+  $ hf repos create my-space --type space --sdk gradio --flavor t4-medium --secrets HF_TOKEN -e THEME=dark --protected
+  $ hf repos create my-space --type space --sdk gradio -v hf://org/my-model:/models -v hf://buckets/org/b:/data
   $ hf repos create my-model --region us
 
 Learn more
