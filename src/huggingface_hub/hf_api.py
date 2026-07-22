@@ -35,7 +35,6 @@ from urllib.parse import quote
 import httpcore
 import httpx
 from tqdm.auto import tqdm as base_tqdm
-from tqdm.contrib.concurrent import thread_map
 
 from . import constants
 from ._buckets import (
@@ -130,6 +129,7 @@ from .utils import (
     get_session,
     get_token,
     hf_raise_for_status,
+    hf_thread_map,
     http_backoff,
     logging,
     paginate,
@@ -422,7 +422,7 @@ def repo_type_and_id_from_hf_id(hf_id: str, hub_url: str | None = None) -> tuple
 
     # Check if repo type is known (mapping "spaces" => "space" + empty value => `None`)
     if repo_type in constants.REPO_TYPES_MAPPING:
-        repo_type = constants.REPO_TYPES_MAPPING[repo_type]
+        repo_type = constants.REPO_TYPES_MAPPING[repo_type]  # type: ignore
     if repo_type == "":
         repo_type = None
     if repo_type not in constants.REPO_TYPES_WITH_KERNEL and repo_type != "bucket":
@@ -6819,7 +6819,7 @@ class HfApi:
                     timeout=timeout,
                 )
 
-            thread_map(
+            hf_thread_map(
                 _parse,
                 set(weight_map.values()),
                 desc="Parse safetensors files",
@@ -13949,7 +13949,7 @@ class HfApi:
                 )
                 all_adds.append((local_path, target_path))
 
-            thread_map(_download_and_collect, pending_downloads, desc="Downloading text files for copy")
+            hf_thread_map(_download_and_collect, pending_downloads, desc="Downloading text files for copy")
 
         # Send copies first (no upload needed), then adds (may need upload)
         if all_copies:
